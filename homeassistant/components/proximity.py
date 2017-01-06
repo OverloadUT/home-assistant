@@ -13,7 +13,7 @@ import voluptuous as vol
 
 from homeassistant.const import (
     CONF_ZONE, CONF_DEVICES, CONF_UNIT_OF_MEASUREMENT)
-from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity import Entity, generate_entity_id
 from homeassistant.helpers.event import track_state_change
 from homeassistant.util.distance import convert
 from homeassistant.util.location import distance
@@ -35,6 +35,8 @@ DEFAULT_PROXIMITY_ZONE = 'home'
 DEFAULT_TOLERANCE = 1
 DEPENDENCIES = ['zone', 'device_tracker']
 DOMAIN = 'proximity'
+
+ENTITY_ID_FORMAT = 'proximity.{}'
 
 UNITS = ['km', 'm', 'mi', 'ft']
 
@@ -60,16 +62,16 @@ def setup_proximity_component(hass, name, config):
     ignored_zones = config.get(CONF_IGNORED_ZONES)
     proximity_devices = config.get(CONF_DEVICES)
     tolerance = config.get(CONF_TOLERANCE)
-    proximity_zone = name
+    proximity_zone = config.get(CONF_ZONE)
     unit_of_measurement = config.get(
         CONF_UNIT_OF_MEASUREMENT, hass.config.units.length_unit)
-    zone_id = 'zone.{}'.format(proximity_zone)
 
-    proximity = Proximity(hass, proximity_zone, DEFAULT_DIST_TO_ZONE,
+    proximity = Proximity(hass, name, proximity_zone, DEFAULT_DIST_TO_ZONE,
                           DEFAULT_DIR_OF_TRAVEL, DEFAULT_NEAREST,
                           ignored_zones, proximity_devices, tolerance,
-                          zone_id, unit_of_measurement)
-    proximity.entity_id = '{}.{}'.format(DOMAIN, proximity_zone)
+                          unit_of_measurement)
+
+    proximity.entity_id = generate_entity_id(ENTITY_ID_FORMAT, name, None, hass)
 
     proximity.update_ha_state()
 
@@ -81,8 +83,8 @@ def setup_proximity_component(hass, name, config):
 
 def setup(hass, config):
     """Get the zones and offsets from configuration.yaml."""
-    for zone, proximity_config in config[DOMAIN].items():
-        setup_proximity_component(hass, zone, proximity_config)
+    for name, proximity_config in config[DOMAIN].items():
+        setup_proximity_component(hass, name, proximity_config)
 
     return True
 
@@ -90,12 +92,12 @@ def setup(hass, config):
 class Proximity(Entity):
     """Representation of a Proximity."""
 
-    def __init__(self, hass, zone_friendly_name, dist_to, dir_of_travel,
+    def __init__(self, hass, name, proximity_zone, dist_to, dir_of_travel,
                  nearest, ignored_zones, proximity_devices, tolerance,
-                 proximity_zone, unit_of_measurement):
+                 unit_of_measurement):
         """Initialize the proximity."""
         self.hass = hass
-        self.friendly_name = zone_friendly_name
+        self._name = name
         self.dist_to = dist_to
         self.dir_of_travel = dir_of_travel
         self.nearest = nearest
@@ -108,7 +110,7 @@ class Proximity(Entity):
     @property
     def name(self):
         """Return the name of the entity."""
-        return self.friendly_name
+        return self._name
 
     @property
     def state(self):
@@ -135,6 +137,7 @@ class Proximity(Entity):
         devices_in_zone = ''
 
         zone_state = self.hass.states.get(self.proximity_zone)
+        zone_name = zone_state.name
         proximity_latitude = zone_state.attributes.get('latitude')
         proximity_longitude = zone_state.attributes.get('longitude')
 
@@ -146,7 +149,7 @@ class Proximity(Entity):
                 devices_to_calculate = True
 
             # Check the location of all devices.
-            if (device_state.state).lower() == (self.friendly_name).lower():
+            if (device_state.state).lower() == zone_name.lower():
                 device_friendly = device_state.name
                 if devices_in_zone != '':
                     devices_in_zone = devices_in_zone + ', '
@@ -248,7 +251,7 @@ class Proximity(Entity):
         self.nearest = entity_name
         self.update_ha_state()
         _LOGGER.debug('proximity.%s update entity: distance=%s: direction=%s: '
-                      'device=%s', self.friendly_name, round(dist_to_zone),
+                      'device=%s', self.name, round(dist_to_zone),
                       direction_of_travel, entity_name)
 
         _LOGGER.info('%s: proximity calculation complete', entity_name)
