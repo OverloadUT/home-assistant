@@ -56,6 +56,10 @@ def execute(qry):
     """
     from sqlalchemy.exc import SQLAlchemyError
 
+    import cProfile
+    pr = cProfile.Profile()
+    pr.enable()
+
     for tryno in range(0, RETRIES):
         try:
             timer_start = time.perf_counter()
@@ -70,6 +74,9 @@ def execute(qry):
                               len(result),
                               elapsed)
 
+            pr.disable()
+            pr.dump_stats('/config/profile.' + str(time.time()) + '.stats')
+
             return result
         except SQLAlchemyError as err:
             _LOGGER.error("Error executing query: %s", err)
@@ -78,3 +85,4 @@ def execute(qry):
                 raise
             else:
                 time.sleep(QUERY_RETRY_WAIT)
+
